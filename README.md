@@ -12,7 +12,7 @@ Table of Contents
 5. Usage 
 6. API Endpoints 
 7. Webhook Handling
-8. Dummy App
+
 
 
 
@@ -114,8 +114,7 @@ Eg: http://localhost:3000/addProduct
 
 
 List All products in shopify 
- 	-  GET ‘/products’ 
-            - Eg: http://localhost:3000/products
+ 	-  GET ‘/products’ - Eg: http://localhost:3000/products
 
 - List All orders in shopify
            - GET ‘/orders’
@@ -137,12 +136,5 @@ List All products in shopify
 
 The app automatically processes incoming webhooks for order creation, updates, fulfillment and cancellations.
 
-8. Dummy App
 
-The dummy app is available for testing and demonstration purposes. You can access it using the following link and password:
-
--  Link : https://arunvinod.myshopify.com/
- 	-  Password to Access : Password
-
-           This dummy app showcases the integration and functionalities of the Shopify Order Management App
   
