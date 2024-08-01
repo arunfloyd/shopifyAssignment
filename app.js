@@ -128,40 +128,27 @@
 //   console.log("Listening on port " + port);
 // });
 
+// Import Required Modules 
 require("dotenv").config();
 const express = require("express");
 const bodyParser = require("body-parser");
 const Shopify = require("shopify-api-node");
-const crypto = require("crypto");
+
 
 const app = express();
 const PORT = 3000;
 
+// MiddleWare to parse JSON body
 app.use(bodyParser.json());
 
+//Intialize Shopify API client 
 const shopify = new Shopify({
   shopName: process.env.STORE_URL,
   apiKey: process.env.API_KEY,
   password: process.env.ACCESS_TOKEN,
 });
 
-function verifyWebhook(req, res, next) {
-  const hmac = req.headers["x-shopify-hmac-sha256"];
-  const body = JSON.stringify(req.body);
-  const secret = process.env.SECRET_KEY;
-
-  const hash = crypto
-    .createHmac("sha256", secret)
-    .update(body, "utf8")
-    .digest("base64");
-
-  if (hash === hmac) {
-    next();
-  } else {
-    res.status(403).send("Unauthorized");
-  }
-}
-
+// Sample product data to be added 
 const addProduct = {
   title:
     "Samsung Galaxy S24 Ultra 5G AI Smartphone (Titanium Black, 12GB, 256GB Storage)",
@@ -182,6 +169,7 @@ const addProduct = {
   ],
 };
 
+// Function to create a new product on Shopify
 const CreateProduct = async () => {
   try {
     const pro = await shopify.product.create(addProduct);
@@ -192,11 +180,13 @@ const CreateProduct = async () => {
   }
 };
 
+// Route to create a product on a GET request
 app.get("/addProduct", (req, res) => {
   CreateProduct();
   res.send("<h1>Product Created Successfully</h1>");
 });
 
+// Route to list products with fields that are required
 app.get("/products", async (req, res) => {
   try {
     const products = await shopify.product.list({
@@ -231,6 +221,103 @@ app.get("/products", async (req, res) => {
   }
 });
 
+// Route to list orders with required fields
+app.get("/orders", async (req, res) => {
+    try {
+      const orders = await shopify.order.list({
+        limit: 5,
+        fields: ["created_at", "id", "name", "total_price", "customer", "billing_address"],
+      });
+  
+      const formattedOrders = orders.map(order => {
+        return {
+          created_at: order.created_at,
+          id: order.id,
+          name: order.name,
+          total_price: order.total_price,
+          customer: order.customer ? {
+            id: order.customer.id,
+            first_name: order.customer.first_name,
+            last_name: order.customer.last_name
+          } : null,
+          billing_address: order.billing_address ? {
+            zip: order.billing_address.zip
+          } : null
+        };
+      });
+  
+      res.send(formattedOrders);
+    } catch (err) {
+      console.error(err);
+      res.status(500).send("An error occurred while fetching orders");
+    }
+  });
+  
+  
+  // Route to list customers with required fields
+  app.get("/customers", async (req, res) => {
+    try {
+      const params = {
+        limit: 50,
+        fields: "id,email,first_name,last_name,orders_count,total_spent",
+      };
+      const customers = await shopify.customer.list(params);
+      if (customers.length === 0) {
+        res.status(404).send("No customers found");
+      } else {
+        res.json(customers);
+      }
+    } catch (err) {
+      console.error("Error fetching customers:", err);
+      res.status(500).json({
+        message: "An error occurred while fetching customers",
+        error: err.message,
+      });
+    }
+  });
+  
+  // Route to get a specific customer and their orders
+  app.get("/customers/:id", async (req, res) => {
+    try {
+      const customerId = req.params.id;
+      const customer = await shopify.customer.get(customerId);
+      const orders = await shopify.order.list({ customer_id: customerId });
+      const customerWithOrders = {
+        ...customer,
+        orders: orders,
+      };
+  
+      res.json(customerWithOrders);
+    } catch (err) {
+      console.error("Error fetching customer data:", err);
+      res.status(500).json({
+        message: "An error occurred while fetching customer data",
+        error: err.message,
+      });
+    }
+  });
+  
+
+  // Route to get the status of a required order
+  app.get("/orders/:id/status", async (req, res) => {
+    try {
+      const orderId = req.params.id;
+      const order = await shopify.order.get(orderId);
+      res.json({
+        id: order.id,
+        financial_status: order.financial_status,
+        fulfillment_status: order.fulfillment_status,
+      });
+    } catch (err) {
+      console.error("Error fetching order status:", err);
+      res.status(500).json({
+        message: "An error occurred while fetching order status",
+        error: err.message,
+      });
+    }
+  });
+
+// Webhook to handle order creation events
 app.post("/webhook/orders/create", (req, res) => {
   try {
     const orderData = req.body;
@@ -243,6 +330,8 @@ app.post("/webhook/orders/create", (req, res) => {
     res.status(500).send("Internal Server Error");
   }
 });
+
+// Webhook to handle order update events
 app.post("/webhook/orders/update", (req, res) => {
   try {
     const orderData = req.body;
@@ -256,6 +345,7 @@ app.post("/webhook/orders/update", (req, res) => {
   }
 });
 
+// Webhook to handle order cancellation events
 app.post("/webhook/orders/cancellation", (req, res) => {
   try {
     const orderData = req.body;
@@ -268,6 +358,8 @@ app.post("/webhook/orders/cancellation", (req, res) => {
     res.status(500).send("Internal Server Error");
   }
 });
+
+// Webhook to handle order fulfillment events
 app.post("/webhook/orders/fulfilled", (req, res) => {
   try {
     const orderData = req.body;
@@ -281,103 +373,9 @@ app.post("/webhook/orders/fulfilled", (req, res) => {
   }
 });
 
-app.get("/orders", async (req, res) => {
-  try {
-    const orders = await shopify.order.list({
-      limit: 5,
-      fields: ["created_at", "id", "name", "total_price"],
-    });
-    res.send(orders);
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("An error occurred while fetching orders");
-  }
-});
 
-app.get("/customers", async (req, res) => {
-  try {
-    const params = {
-      limit: 50,
-      fields: "id,email,first_name,last_name,orders_count,total_spent",
-    };
-    const customers = await shopify.customer.list(params);
-    if (customers.length === 0) {
-      res.status(404).send("No customers found");
-    } else {
-      res.json(customers);
-    }
-  } catch (err) {
-    console.error("Error fetching customers:", err);
-    res.status(500).json({
-      message: "An error occurred while fetching customers",
-      error: err.message,
-    });
-  }
-});
 
-app.get("/customers/:id", async (req, res) => {
-  try {
-    const customerId = req.params.id;
-
-    // Fetch customer data
-    const customer = await shopify.customer.get(customerId);
-
-    // Fetch customer's orders
-    const orders = await shopify.order.list({ customer_id: customerId });
-
-    // Combine customer data with their orders
-    const customerWithOrders = {
-      ...customer,
-      orders: orders,
-    };
-
-    res.json(customerWithOrders);
-  } catch (err) {
-    console.error("Error fetching customer data:", err);
-    res.status(500).json({
-      message: "An error occurred while fetching customer data",
-      error: err.message,
-    });
-  }
-});
-
-const handleOrderUpdate = async (order) => {
-  switch (order.financial_status) {
-    case "paid":
-      await sendOrderConfirmationEmail(order);
-      break;
-    case "refunded":
-      await updateInventory(order);
-      break;
-    // Add more cases as needed
-  }
-};
-
-const handleOrderFulfillment = async (order) => {
-  await sendShippingNotification(order);
-};
-
-const handleOrderCancellation = async (order) => {
-  await updateInventory(order);
-  await sendCancellationNotification(order);
-};
-app.get("/orders/:id/status", async (req, res) => {
-  try {
-    const orderId = req.params.id;
-    const order = await shopify.order.get(orderId);
-    res.json({
-      id: order.id,
-      financial_status: order.financial_status,
-      fulfillment_status: order.fulfillment_status,
-    });
-  } catch (err) {
-    console.error("Error fetching order status:", err);
-    res.status(500).json({
-      message: "An error occurred while fetching order status",
-      error: err.message,
-    });
-  }
-});
+// Start the Express server
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
